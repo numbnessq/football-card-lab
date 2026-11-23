@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROME_CHANNEL ? {channel:process.env.CHROME_CHANNEL} : {});
 const output = process.env.REPORT_DIR || 'browser-report';
 await mkdir(output, {recursive:true});
 const url = process.env.SITE_URL || 'http://127.0.0.1:4173';
