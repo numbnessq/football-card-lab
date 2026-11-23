@@ -33,12 +33,17 @@ try {
   page.on('pageerror',e=>errors.push(e.message));
   const card=page.locator('.player-card');
   const read=async()=>[...await card.locator('.card-stats b').allTextContents(),await card.locator('.rating').innerText()];
-  const submit=page.getByRole('button',{name:'Сохранить результат',exact:true});
+  const submit=page.getByRole('button',{name:'Сохранить и дальше',exact:true});
   const form=page.locator('form');
   const label=(s)=>form.getByLabel(s,{exact:true});
   let count=0;
   async function record(id,fields){
-   await page.getByRole('combobox',{name:/^Упражнение/}).selectOption(id);
+   if(await page.locator('.step-meta span').last().innerText()!==id){
+     const summary=page.locator('summary').filter({hasText:'Каталог упражнений'});
+     const item=page.locator('article.test-item').filter({has:page.getByText(id,{exact:true})});
+     if(!await item.isVisible())await summary.click();
+     await item.getByRole('button',{name:'Ввести результат'}).click();
+   }
    for(const [key,value] of Object.entries(fields))await label(key).fill(String(value));
    await submit.click();
    await page.getByText('Журнал замеров · '+(++count),{exact:true}).waitFor();
@@ -52,16 +57,23 @@ try {
   await page.getByLabel('Имя',{exact:true}).fill('Игрок Тест');
   await page.getByRole('combobox',{name:/^Позиция/}).selectOption('FB');
   await record('P04',{'60 м, с':'8,10'});
+  await page.getByRole('heading',{name:'Ускорение на 10 м'}).waitFor();
+  await page.reload();
+  await page.getByRole('heading',{name:'Ускорение на 10 м'}).waitFor();
   assert.equal((await read())[0],'61');
   await page.locator('.note summary').click();
   assert.match(await page.locator('.note').innerText(),/60 м за 8,1 с/);
   console.log(name,'60 м за 8,10 с:',await read());
   await record('P01',{'Время, с':'1,90'});
+  await page.getByRole('heading',{name:'Летучие 20 м'}).waitFor();
   await record('P03',{'Время, с':'2,40'});
   await record('P08',{'Дистанция, м':2600});
   await record('P06',{'Разворот через левую, с':3,'Разворот через правую, с':3});
   await record('P11',{'Единоборства':20,'Выиграно':10,'Матч':'Матч 1','Минуты игры':60});
   await record('B01',{'Попытки':20,'В створ':10});
+  await page.getByRole('heading',{name:'Короткий пас · Левая'}).waitFor();
+  await record('B01',{'Попытки':20,'В створ':10});
+  await page.getByRole('heading',{name:'Завершение · Правая'}).waitFor();
   for(const id of ['B03','B04'])await record(id,{'Попытки':12,'В квадрат':6});
   await record('B05',{'Передачи':20,'Мяч в квадрате':10});
   await record('B07',{'Без мяча, с':9,'С мячом, с':12,'Пропущено конусов':0});
@@ -76,7 +88,7 @@ try {
   await page.getByText('Журнал замеров · '+count,{exact:true}).click();
   await page.locator('.test-item').filter({hasText:'Летучие 20 м'}).getByRole('button',{name:'Изменить',exact:true}).click();
   await label('Время, с').fill('2,25');
-  await submit.click();
+  await page.getByRole('button',{name:'Сохранить изменения'}).click();
   await page.reload();
   await card.waitFor();
   const after=await read();

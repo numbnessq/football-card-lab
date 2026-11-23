@@ -34,9 +34,9 @@ function Vision({onFinish}:{onFinish:(value:number)=>void}){
  {stage==='answer'&&<div className="actions">{['А','Б','В'].map((letter,j)=><button type="button" key={letter} onClick={()=>{setCorrect(correct+Number(answer===j));setI(i+1);setStage(i===11?'done':'ready')}}>{letter}</button>)}</div>}
  {stage==='done'&&<button type="button" onClick={()=>onFinish(correct)}>Сохранить {correct} из 12</button>}</div>
 }
-export function Form({id,initial,onSave,format,last}:{id:string;initial?:Entry;onSave:(entries:Entry[])=>void;format:string;last?:Entry}){
+export function Form({id,initial,side,onSave,format,last}:{id:string;initial?:Entry;side?:string;onSave:(entries:Entry[])=>void;format:string;last?:Entry}){
  const test=byId[id];
- const [entry,setEntry]=useState(()=>initial??{...makeEntry(id),format:last?.format??format,match:last?.match??'',minutes:last?.minutes??null});
+ const [entry,setEntry]=useState(()=>initial??{...makeEntry(id),side:side??makeEntry(id).side,format:last?.format??format,match:last?.match??'',minutes:last?.minutes??null});
  const [input,setInput]=useState<string[]>(entry.values.map(numeric)),[dims,setDims]=useState<string[]>(entry.dimensions.map(numeric));
  const [minutes,setMinutes]=useState(numeric(entry.minutes)),[error,setError]=useState('');
  const set=<K extends keyof Entry>(key:K,value:Entry[K])=>setEntry(e=>({...e,[key]:value}));
@@ -49,7 +49,7 @@ export function Form({id,initial,onSave,format,last}:{id:string;initial?:Entry;o
  }
  return <form className="form" onSubmit={e=>{e.preventDefault();submit([raw()])}}><div className="fields">
  {test.labels.map((label,i)=><label key={label}>{label}<input inputMode="decimal" placeholder={id==='P04'&&i===2?'8,10':'—'} value={input[i]??''} onChange={e=>{const values=[...input];values[i]=e.target.value;setInput(values)}}/></label>)}
- {sides[id]&&<label>{id==='S01'?'Движение':'Сторона / вариант'}<select value={entry.side} onChange={e=>set('side',e.target.value)}>{sides[id].map(v=><option key={v}>{v}</option>)}</select></label>}
+ {sides[id]&&(!side||initial)&&<label>{id==='S01'?'Движение':'Сторона / вариант'}<select value={entry.side} onChange={e=>set('side',e.target.value)}>{sides[id].map(v=><option key={v}>{v}</option>)}</select></label>}
  {Array.from({length:dimensions},(_,i)=><label key={i}>{['Дистанция, м','Ширина цели, м',id==='G01'?'Высота ворот, м':'Высота или глубина цели, м'][i]}<input inputMode="decimal" value={dims[i]??''} onChange={e=>{const values=[...dims];values[i]=e.target.value;setDims(values)}}/></label>)}
  <label>Дата<input type="date" value={entry.date} onChange={e=>set('date',e.target.value)}/></label>
  <label>Как измерили<select value={entry.quality} onChange={e=>set('quality',e.target.value)}>{Object.entries(methods).map(([key,value])=><option key={key} value={key}>{value}</option>)}</select></label>
@@ -61,5 +61,5 @@ export function Form({id,initial,onSave,format,last}:{id:string;initial?:Entry;o
  {id==='D06'&&!initial&&<Reaction onFinish={values=>submit(values.map(value=>({...raw(),quality:'electronic',values:[value]})))}/>}
  {id==='D08'&&!initial&&<Vision onFinish={success=>submit([{...raw(),quality:'electronic',values:[12,success]}])}/>}
  {error&&<p className="error" role="alert">{error}</p>}
- <button className="primary" type="submit">Сохранить результат</button></form>
+ <button className="primary" type="submit" >{initial?'Сохранить изменения':'Сохранить и дальше'}</button></form>
 }
