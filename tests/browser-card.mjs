@@ -38,7 +38,7 @@ try {
   const label=(s)=>form.getByLabel(s,{exact:true});
   let count=0;
   async function record(id,fields){
-   await page.getByLabel('Упражнение',{exact:true}).selectOption(id);
+   await page.getByRole('combobox',{name:/^Упражнение/}).selectOption(id);
    for(const [key,value] of Object.entries(fields))await label(key).fill(String(value));
    await submit.click();
    await page.getByText('Журнал замеров · '+(++count),{exact:true}).waitFor();
@@ -50,7 +50,7 @@ try {
   assert.ok(await page.getByRole('alert').isVisible());
   assert.deepEqual(await read(),Array(7).fill('—'));
   await page.getByLabel('Имя',{exact:true}).fill('Игрок Тест');
-  await page.getByLabel('Позиция',{exact:true}).selectOption('FB');
+  await page.getByRole('combobox',{name:/^Позиция/}).selectOption('FB');
   await record('P04',{'60 м, с':'8,10'});
   assert.equal((await read())[0],'61');
   await page.locator('.note summary').click();
@@ -87,6 +87,7 @@ try {
   const width=await page.evaluate(()=>({page:document.documentElement.scrollWidth,viewport:innerWidth}));
   assert.equal(width.page,options.viewport.width);
   assert.equal(width.viewport,options.viewport.width);
+  await page.locator('.input-panel').scrollIntoViewIfNeeded();
   await page.screenshot({path:output+'/'+name+'-form.png'});
   await card.screenshot({path:output+'/'+name+'-card.png'});
   await page.close();
