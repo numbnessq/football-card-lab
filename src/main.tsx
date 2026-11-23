@@ -8,7 +8,8 @@ import {Form,Pitch,numeric} from './form.tsx';
 import {Method,Results,keepers,outfield,pct,statsNames,trust} from './results.tsx';
 import './style.css';
 
-const groups:Record<string,string>={P:'Скорость и физика',B:'Пас и контроль',A:'Удары и атака',D:'Защита и восприятие',G:'Вратари',S:'Финты'};
+import {resume,stepsFor,progressKey} from './series.ts';
+import type {Route} from './series.ts';
 const download=(url:string,name:string)=>{const a=document.createElement('a');a.href=url;a.download=name;a.click()};
 function exportProfile(data:Data){
  const url=URL.createObjectURL(new Blob([serialize(data)],{type:'application/json'}));
@@ -17,10 +18,10 @@ function exportProfile(data:Data){
 function png(name:string,position:string,ovr:string|number,stats:[string,string|number][]){
  const canvas=document.createElement('canvas');canvas.width=660;canvas.height=740;
  const ctx=canvas.getContext('2d');if(!ctx)return;
- const gradient=ctx.createLinearGradient(0,0,660,740);gradient.addColorStop(0,'#dcefdb');gradient.addColorStop(1,'#8ebda2');
- ctx.fillStyle='#102b23';ctx.fillRect(0,0,660,740);
+ const gradient=ctx.createLinearGradient(0,0,660,740);gradient.addColorStop(0,'#e8ff85');gradient.addColorStop(1,'#94c55e');
+ ctx.fillStyle='#171520';ctx.fillRect(0,0,660,740);
  ctx.fillStyle=gradient;ctx.beginPath();ctx.moveTo(105,52);ctx.lineTo(555,52);ctx.lineTo(610,138);ctx.lineTo(610,591);ctx.lineTo(330,705);ctx.lineTo(50,591);ctx.lineTo(50,138);ctx.closePath();ctx.fill();
- ctx.fillStyle='#102e24';ctx.textAlign='center';ctx.font='700 26px sans-serif';ctx.fillText('МОЯ ФУТБОЛЬНАЯ КАРТОЧКА',330,130,480);
+ ctx.fillStyle='#17201a';ctx.textAlign='center';ctx.font='700 26px sans-serif';ctx.fillText('МОЯ ФУТБОЛЬНАЯ КАРТОЧКА',330,130,480);
  ctx.font='700 116px sans-serif';ctx.fillText(String(ovr),330,280);ctx.font='700 25px sans-serif';ctx.fillText(position+' · OVR',330,330);ctx.font='700 38px sans-serif';ctx.fillText(name||'Игрок',330,416,490);
  stats.forEach(([key,value],i)=>{const x=120+i*420/(stats.length-1);ctx.font='700 36px sans-serif';ctx.fillText(String(value),x,512);ctx.font='700 20px sans-serif';ctx.fillText(key,x,546)});
  download(canvas.toDataURL('image/png'),'football-card.png');
@@ -33,7 +34,11 @@ function demo():Data{
 }
 function App(){
  const [data,setData]=useState(()=>load(localStorage));
- const [page,setPage]=useState('lab'),[route,setRoute]=useState('quick'),[selected,setSelected]=useState('P04');
+ const [page,setPage]=useState('lab');
+ const [cursor,setCursor]=useState(()=>resume(localStorage));
+ const route=cursor.route, steps=stepsFor(route), index=cursor.offsets[route];
+ const step=steps[index];
+ useEffect(()=>{try{localStorage.setItem(progressKey,JSON.stringify(cursor))}catch{/* Замеры сохраняются отдельно. */}},[cursor]);
  const [instruction,setInstruction]=useState<string|null>(null),[editing,setEditing]=useState<number|null>(null);
  const [session,setSession]=useState(0),[notice,setNotice]=useState('');
  const [fieldPosition,setFieldPosition]=useState('ST');
@@ -44,24 +49,44 @@ function App(){
  const setProfile=<K extends keyof Profile>(key:K,value:Profile[K])=>setData(d=>({...d,profile:{...d.profile,[key]:value}}));
  function changePosition(value:string){if(value!=='GK')setFieldPosition(value);setProfile('position',value)}
  useEffect(()=>{try{save(localStorage,data)}catch{setNotice('Автосохранение недоступно. Скачайте JSON, чтобы сохранить замеры.')}},[data]);
- const pick=(id:string)=>{setPage('lab');setSelected(id);setEditing(null);setSession(n=>n+1);requestAnimationFrame(()=>editor.current?.scrollIntoView({behavior:'smooth',block:'nearest'}))};
+ function move(to:number,target:Route=route){
+   setCursor(c=>({route:target,offsets:{...c.offsets,[target]:to}}));
+   setEditing(null);setInstruction(null);setSession(n=>n+1);
+   requestAnimationFrame(()=>editor.current?.scrollIntoView({block:'start'}));
+ }
+ function pick(id:string){
+   setPage('lab');
+   const target=steps.some(s=>s.id===id)?route:'quick';
+   move(stepsFor(target).findIndex(s=>s.id===id),target);
+ }
  const visible=catalog.filter(t=>route==='matches'?t.match:route==='field'?!t.match:true);
  const last=[...data.entries].reverse().find(e=>byId[e.id].match);
- const test=byId[selected];
- return <><header className="top"><div className="shell nav"><button className="brand" onClick={()=>setPage('lab')}><span className="mark">⚽</span> Футбольная карточка</button><nav aria-label="Разделы"><button className={page==='lab'?'active':''} onClick={()=>setPage('lab')}>Калькулятор</button><button className={page==='method'?'active':''} onClick={()=>setPage('method')}>Методика</button></nav></div></header>
+ const original=editing===null?undefined:data.entries[editing];
+ const selected=original?.id??step?.id;
+ const test=byId[selected??''];
+ function storeResults(entries:Data['entries']){
+   const next={...data,entries:editing===null?[...data.entries,...entries]:data.entries.map((e,i)=>i===editing?entries[0]:e)};
+   try{save(localStorage,next)}catch{setNotice('Не удалось сохранить замер на устройстве. Освободите место и повторите.');return}
+   setData(next);
+   setNotice(test.name+' · сохранено');
+   move(editing===null?index+1:index);
+ }
+
+ return <><header className="top"><div className="shell nav"><button className="brand" onClick={()=>setPage('lab')}><span className="mark">◈</span> Футбольная карточка</button><nav aria-label="Разделы"><button className={page==='lab'?'active':''} onClick={()=>setPage('lab')}>Калькулятор</button><button className={page==='method'?'active':''} onClick={()=>setPage('method')}>Методика</button></nav></div></header>
  <main className="shell">{page==='method'?<Method/>:<>
- <div className="intro"><h1>Моя футбольная<br className="desktop"/> карточка</h1><p>Внесите то, что уже измерили. Карточка покажет ваши атрибуты и замеры, на которых они основаны.</p></div>
+ <div className="intro"><h1>Моя футбольная <em>карточка</em></h1><div className="field-art" aria-hidden="true"><i/></div></div>
  <div className="layout"><div className="workspace">
- <div className="tabs" role="group" aria-label="Маршрут">{[['quick','Быстрый ввод'],['field','Полевой тест'],['matches','Матчи']].map(([key,label])=><button key={key} className={route===key?'chosen':''} onClick={()=>{setRoute(key);setSelected(key==='matches'?'A09':key==='field'?'P01':'P04');setEditing(null);setInstruction(null)}}>{label}</button>)}</div>
- <section className="panel input-panel" ref={editor}><div className="section-head"><h2>{editing===null?'Добавить замер':'Изменить замер'}</h2><span className="code">{selected}</span></div>
- <label className="picker">Упражнение<select value={selected} onChange={e=>pick(e.target.value)}>{!visible.some(t=>t.id===selected)&&<option value={selected}>{test.name}</option>}{Object.entries(groups).map(([key,label])=><optgroup key={key} label={label}>{visible.filter(t=>t.id.startsWith(key)).map(t=><option key={t.id} value={t.id}>{t.id==='P04'?'Бег на 30, 40, 60 или 100 м':t.name}</option>)}</optgroup>)}</select></label>
+ <div className="tabs" role="group" aria-label="Маршрут">{[['quick','Быстрый ввод'],['field','Полевой тест'],['matches','Матчи']].map(([key,label])=><button key={key} className={route===key?'chosen':''} onClick={()=>{move(cursor.offsets[key as Route],key as Route);setNotice('')}}>{label}</button>)}</div>
+ <section className="panel input-panel" ref={editor}>{test&&selected?<><div className="step-meta"><span>{editing===null?'Упражнение '+(index+1)+' / '+steps.length:'Редактирование'}</span><span>{selected}</span></div><div className="track"><i style={{width:((index+1)/steps.length*100)+'%'}}/></div><h2 className="exercise-title">{test.name}{!original&&step?.side?' · '+step.side:''}</h2>
  <button className="link" onClick={()=>setInstruction(instruction===selected?null:selected)}>Как измерить</button>{(instruction===selected||route==='field')&&<div className="protocol"><p>{test.protocol}</p>{['B07','D01','G05','B01','B03','G04'].includes(selected)&&<Pitch id={selected}/>}</div>}
- <Form key={selected+'-'+session+'-'+editing} id={selected} initial={editing===null?undefined:data.entries[editing]} format={data.profile.format} last={last} onSave={entries=>{setData(d=>({...d,entries:editing===null?[...d.entries,...entries]:d.entries.map((e,i)=>i===editing?entries[0]:e)}));setNotice('Замер сохранён. Карточка обновлена.');setSession(n=>n+1);setEditing(null)}}/>
+ <Form key={selected+'-'+session+'-'+editing} id={selected} initial={original} side={step?.side} format={data.profile.format} last={last} onSave={storeResults}/>
+ {editing===null?<button className="link skip" onClick={()=>{setNotice('');move(index+1)}}>Пропустить упражнение</button>:<button className="link skip" onClick={()=>move(index)}>Отмена</button>}
+ </>:<><h2>Серия завершена</h2><p>Результаты доступны в журнале и на карточке.</p><button onClick={()=>{setNotice('');move(0)}}>Начать новую серию</button></>}
  {notice&&<p role="status" className="notice">{notice}</p>}</section>
  <details className="panel"><summary>Каталог упражнений · {visible.length}</summary>{visible.map(t=><article className="test-item" key={t.id}><div><span className="code">{t.id}</span><strong>{t.name}</strong></div><div className="actions"><button onClick={()=>pick(t.id)}>Ввести результат</button><button onClick={()=>setInstruction(instruction===t.id?null:t.id)}>Как измерить</button></div>{instruction===t.id&&<p>{t.protocol}</p>}</article>)}</details>
- <details className="panel"><summary>Журнал замеров · {data.entries.length}</summary>{data.entries.map((e,i)=><div className="test-item" key={i}><strong>{e.date} · {byId[e.id].name} {e.side}</strong><p>{e.values.map(numeric).map(v=>v||'—').join(' / ')} {e.match&&' · '+e.match+' · '+e.format+' · '+e.minutes+' мин'}</p><div className="actions"><button onClick={()=>{pick(e.id);setEditing(i)}}>Изменить</button><button onClick={()=>{setData(d=>({...d,entries:d.entries.filter((_,index)=>index!==i)}));setEditing(null)}}>Удалить</button></div></div>)}</details></div>
+ <details className="panel"><summary>Журнал замеров · {data.entries.length}</summary>{data.entries.map((e,i)=><div className="test-item" key={i}><strong>{e.date} · {byId[e.id].name} {e.side}</strong><p>{e.values.map(numeric).map(v=>v||'—').join(' / ')} {e.match&&' · '+e.match+' · '+e.format+' · '+e.minutes+' мин'}</p><div className="actions"><button onClick={()=>{setEditing(i);setSession(n=>n+1);requestAnimationFrame(()=>editor.current?.scrollIntoView({block:'start'}))}}>Изменить</button><button onClick={()=>{setData(d=>({...d,entries:d.entries.filter((_,index)=>index!==i)}));setEditing(null)}}>Удалить</button></div></div>)}</details></div>
  <aside className="preview"><div className="section-head"><h2>Ваша карточка</h2><button className="link" onClick={()=>changePosition(isGK?fieldPosition:'GK')}>{isGK?'Полевой игрок':'Вратарь'}</button></div>
- <div className="card-frame"><div className="player-card"><div className="card-top"><span>{position}</span><span>OVR</span></div><strong className="rating">{round(ovr.score)}</strong><span className="card-name">{data.profile.name||'Ваш игрок'}</span><div className="card-stats">{statKeys.map(key=><div key={key} title={statsNames[key]}><b>{round(result.stats[key].score)}</b><span>{key}</span></div>)}</div></div></div>
+ <div className="card-frame"><div className="player-card"><div className="card-top"><span>{position}</span><span>OVR</span></div><strong className="rating">{round(ovr.score)}</strong><span aria-hidden="true" className="crest">◆</span><span className="card-name">{data.profile.name||'Ваш игрок'}</span><div className="card-stats">{statKeys.map(key=><div key={key} title={statsNames[key]}><b>{round(result.stats[key].score)}</b><span>{key}</span></div>)}</div></div></div>
  <div className="coverage"><div><span>Заполненность OVR</span><b>{pct(ovr.coverage)}</b></div><progress max={1} value={ovr.coverage}/><small>{ovr.score===null?'Для OVR нужно 60% веса позиции':ovr.preliminary?'Предварительный OVR':trust(ovr.trust)}</small></div>
  {result.paceDetail&&!isGK&&<div className="note"><b>Предварительный PAC</b><details><summary>Как посчитано</summary><p>{result.paceDetail}</p></details><div className="actions">{!result.attributes.acc&&<button onClick={()=>pick('P01')}>10 м с места</button>}{!result.attributes.sprint&&<button onClick={()=>pick('P03')}>Летучие 20 м</button>}</div></div>}
  <div className="actions"><button onClick={()=>png(data.profile.name,position,round(ovr.score),statKeys.map(key=>[key,round(result.stats[key].score)]))}>Скачать PNG</button><button onClick={()=>exportProfile(data)}>Экспорт JSON</button><button onClick={()=>file.current?.click()}>Импорт JSON</button></div>
