@@ -37,7 +37,7 @@ export function validate(e:Entry):string|null{
  const filled=values.filter(has);
  if(!filled.length||filled.some(n=>!Number.isFinite(n)||n<0))return 'Введите корректные неотрицательные числа.';
  if(sides[id]&&!sides[id].includes(e.side))return 'Выберите сторону или вариант теста.';
- if(test.match&&(!formats.includes(e.format)||!e.match.trim()||e.minutes===null||!Number.isFinite(e.minutes)||e.minutes<=0))return 'Укажите матч, формат и положительное число минут.';
+ if(test.match&&(!formats.includes(e.format)||!e.match.trim()||typeof e.minutes!=='number'||!Number.isFinite(e.minutes)||e.minutes<=0))return 'Укажите матч, формат и положительное число минут.';
  if(e.dimensions.some(n=>!Number.isFinite(n)||n<=0))return 'Размеры и расстояния должны быть положительными.';
  if(geometry[id]&&e.dimensions.length!==(id==='G01'?3:id==='G03'?1:geometry[id].length))return 'Заполните расстояние и размеры цели.';
  if(id==='A04'&&(e.dimensions[0]<8||e.dimensions[0]>12))return 'Для этого протокола допустимо 8–12 м.';
@@ -62,7 +62,6 @@ export function validate(e:Entry):string|null{
 type Signal={id:string;score:number;quality:number;sufficiency:number;weight:number;detail:string;indirect:boolean};
 type Attribute={score:number;trust:number;sources:Signal[];indirect:boolean};
 const sum=(values:number[])=>values.reduce((a,b)=>a+b,0);
-const average=(values:number[])=>sum(values)/values.length;
 const show=(n:number)=>Number(n.toFixed(3)).toLocaleString('ru-RU');
 const rate=(success:number,n:number)=>show(success)+' / '+n+' → p = '+show(jeffreys(success,n)!);
 const protocol=(e:Entry)=>JSON.stringify([e.side,e.surface,e.start,e.dimensions,e.device,e.quality,e.format,e.id==='A03'&&e.values[0]!=null]);
@@ -89,7 +88,13 @@ function signal(entries:Entry[]):Signal|null{
    if(splits.length)set('P01',splits,'с на 10 м');else set('P02',values.map(v=>v[0]),'с на 20 м');
    break;
  }
- case 'P03':set('sprint',values.map(v=>kmh(20,v[0])),'км/ч');detail+=' · 20 м за '+values.map(v=>show(v[0])).join(', ')+' с (3,6 × 20 / с)';break;
+ case 'P03':{
+   const seconds=values.map(v=>v[0]);
+   const time=median(seconds),speed=kmh(20,time);
+   score=interpolate(speed,continuous.sprint.anchors);
+   detail='20 м за '+show(time)+' с → '+show(speed)+' км/ч (3,6 × 20 / с) · шкала sprint · попытки '+seconds.map(show).join(', ')+' с';
+   break;
+ }
  case 'P05':set('sprint',values.map(v=>v[0]),'км/ч');suff=total[1];break;
  case 'P06':set(id,values.flatMap(v=>[v[0],v[1]]),'с');break;
  case 'P07':{
@@ -179,7 +184,11 @@ export function calculate(data:Data,until?:string){
    const totals=[0,1,2,3].map(i=>sum(selected.map(e=>e.values[i]??0)));
    return totals[0]>=10&&totals[2]>=3&&jeffreys(totals[1],totals[0])!>=.65&&jeffreys(totals[3],totals[2])!>=.5;
  });
- const skills=skillRows.some(e=>(e.values[0]??0)>=10&&(e.values[2]??0)>=3)?Math.min(5,1+moves.length):null;
+ const hasSkillSample=(sides.S01??[]).some(move=>{
+   const attempts=skillRows.filter(e=>e.side===move);
+   return sum(attempts.map(e=>e.values[0]??0))>=10&&sum(attempts.map(e=>e.values[2]??0))>=3;
+ });
+ const skills=hasSkillSample?Math.min(5,1+moves.length):null;
  return {attributes,stats,ovr,paceDetail,next,weak,weakParts,skills,moves};
 }
 export const round=(score:number|null|undefined)=>score==null?'—':Math.round(score);
